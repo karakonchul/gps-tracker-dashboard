@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "gps-tracker-dashboard",
   "version": "0.1.0",
   "private": true,
@@ -10,7 +11,7 @@
   },
   "dependencies": {
     "mqtt": "^5.10.3",
-    "next": "15.1.6",
+    "next": "^13.5.7",
     "pg": "^8.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
