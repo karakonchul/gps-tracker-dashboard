@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GPS Tracker Dashboard
 
-## Getting Started
+IoT устройство за локализация със S.O.S
+---
 
-First, run the development server:
+## Използвани технологии и инструменти
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Хардуер**  
+  - Arduino Nano  
+  - SIM868 GSM/GPRS/GNSS модул  
+  - SOS бутон
+  - DWM 1000
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Езици и фреймуъркове**  
+  - C++ (Arduino скеч)  
+  - JavaScript / TypeScript (Next.js + React)  
+  - SQL (PostgreSQL)  
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **База данни**  
+  - PostgreSQL (v17.2)  
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Сървър и бекенд**  
+  - Next.js (App Router)  
+  - Node.js  
+  - `pg` (node-postgres) за връзка с PostgreSQL  
+  - `mqtt.js` за MQTT интеграция  
 
-## Learn More
+- **Фронтенд**  
+  - React (вградено в Next.js)  
+  - Google Maps JavaScript API  
+  - Tailwind CSS за базова стилизация  
 
-To learn more about Next.js, take a look at the following resources:
+- **Реално-време**  
+  - MQTT протокол, публичен брокер HiveMQ (wss://broker.hivemq.com:8884/mqtt)  
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Тунелиране / DevOps**  
+  - ngrok v3 (HTTP тунел, TCP тунел)  
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Предварителни условия
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. **Arduino IDE** (или друг инструмент за качване на Arduino скеч)  
+2. **Node.js & npm**  
+3. **PostgreSQL** (локална инсталация или изнесена чрез ngrok)  
+4. **ngrok v3** (регистриран акаунт за резервация на субдомейн)  
+5. **Google Maps API ключ**  
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+---
+
+## Конфигурация на база данни (PostgreSQL)
+
+1. Създайте база данни `gps_tracker`:
+   ```sql
+   CREATE DATABASE gps_tracker;
+
+    CREATE TABLE locations (
+      id SERIAL PRIMARY KEY,
+      device_id VARCHAR(50) NOT NULL,
+      latitude DOUBLE PRECISION NOT NULL,
+      longitude DOUBLE PRECISION NOT NULL,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE notifications (
+      id SERIAL PRIMARY KEY,
+      message TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE uwb_readings (
+      id SERIAL PRIMARY KEY,
+      device_id VARCHAR(50) NOT NULL,
+      x DOUBLE PRECISION NOT NULL,
+      y DOUBLE PRECISION NOT NULL,
+      timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+## Геозона (Geofence) – проверка на GPS координати
+   
+    export function isInsideGeofence(
+      latitude: number,
+      longitude: number,
+      centerLat = 42.6977,
+      centerLon = 23.3219,
+      radiusKm = 1
+    ): boolean {
+      const toRad = (v: number) => (v * Math.PI) / 180;
+      const R = 6371; // Земен радиус в километри
+  
+    const dLat = toRad(centerLat - latitude);
+    const dLon = toRad(centerLon - longitude);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(latitude)) *
+        Math.cos(toRad(centerLat)) *
+        Math.sin(dLon / 2) ** 2;
+    const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+    return distance <= radiusKm;
+  }
+
+**Входни параметри**
+
+-	**latitude, longitude** – GPS координатите на устройството.
+-	**centerLat = 42.6977, centerLon = 23.3219** – координатите на центъра на геозоната (по подразбиране София).
+- **radiusKm = 1**– радиусът на геозоната в километри (по подразбиране 1 км).
+- **Изчисление:**
+1.	Преобразуваме ширина и дължина в радиани чрез toRad.
+2.	Пресмятаме разликата на ширини dLat = toRad(centerLat – latitude) и дължини dLon = toRad(centerLon – longitude).
+3.	Прилагаме Haversine формулата:
+ 
+            a = sin²(dLat/2) 
+              + cos(toRad(latitude)) 
+              * cos(toRad(centerLat)) 
+              * sin²(dLon/2)
+          
+            distance = R * 2 * atan2(√a, √(1 – a))
+
+  където R = 6371 км е земният радиус.
+
+   4.	Ако distance ≤ radiusKm, функцията връща true (т.е. точката е вътре в геозоната). В противен случай връща false.
